@@ -38,6 +38,9 @@ dependencies {
 
     //Mojang dependencies
     implementation("com.mojang:brigadier:1.0.18")
+
+    //Python Plugins
+    implementation("black.ninia:jep:4.1.1")
 }
 
 detekt {
@@ -53,6 +56,22 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 
 application {
     mainClass = "com.aznos.MainKt"
+    applicationDefaultJvmArgs = listOf(
+        "-Djava.library.path=/home/angad/.local/lib/python3.10/site-packages/jep:/home/angad/.jdks/corretto-21.0.6/lib/server:/usr/lib/x86_64-linux-gnu"
+    )
+}
+
+tasks.withType<JavaExec> {
+    environment(mapOf(
+        "LD_LIBRARY_PATH" to "/home/angad/.local/lib/python3.10/site-packages/jep:/usr/lib/x86_64-linux-gnu:/home/angad/.jdks/corretto-21.0.6/lib/server",
+        "JEP_LIBRARY_PATH" to "/home/angad/.local/lib/python3.10/site-packages/jep",
+        "PYTHONHOME" to "/usr",
+        "PYTHONPATH" to "/home/angad/.local/lib/python3.10/site-packages"
+    ))
+}
+
+tasks.named<JavaExec>("run") {
+    environment("LD_LIBRARY_PATH", "/home/angad/.jdks/corretto-21.0.6/lib/server:/usr/lib:/usr/lib/x86_64-linux-gnu:/home/angad/.local/lib/python3.10/site-packages/jep")
 }
 
 tasks.register("runServer") {

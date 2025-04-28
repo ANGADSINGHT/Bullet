@@ -17,6 +17,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import dev.dewy.nbt.api.registry.TagTypeRegistry
 import dev.dewy.nbt.tags.collection.CompoundTag
+import jep.SharedInterpreter
 import kotlinx.coroutines.*
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.TextComponent
@@ -33,8 +34,40 @@ import java.net.URLClassLoader
 import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.jar.JarFile
+import jep.python.PyObject
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+
+class PythonPluginWrapper(private val pyPlugin: PyObject) : Plugin {
+
+    private val interpreter = SharedInterpreter()
+
+    @OptIn(DelicateCoroutinesApi::class)
+    override fun onEnable() {
+        // Call the Python method inside a coroutine
+        GlobalScope.launch {
+            pyPlugin.invoke("on_enable")
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    override fun onDisable() {
+        // Call the Python method inside a coroutine
+        GlobalScope.launch {
+            pyPlugin.invoke("on_disable")
+        }
+    }
+
+    override fun getName(): String {
+        // Implement logic to return the name of the plugin
+        return pyPlugin.toString() // Placeholder
+    }
+
+    private fun PyObject.invoke(methodName: String) {
+        interpreter.exec("plugin = $pyPlugin")
+        interpreter.exec("plugin.$methodName()")
+    }
+}
 
 /**
  * This is where the core of the bullet server logic is housed
@@ -128,6 +161,28 @@ object Bullet : AutoCloseable {
         val pluginDir = File("plugins")
         if(!pluginDir.exists()) pluginDir.mkdirs()
 
+        pluginDir.listFiles() { file -> file.extension == "py" }?.forEach { file ->
+            val py = SharedInterpreter()
+            try {
+                py.runScript("plugins/${file.name}")
+                logger.info("Loaded Python plugin ${file.name}")
+            } catch (e: Exception) {
+                logger.error("Failed to load Python plugin ${file.name}: ${e.message}")
+            }
+            try {
+                val pluginClass = py.getValue("Plugin") as? PyObject
+                if (pluginClass != null) {
+                    val plugin = PythonPluginWrapper(pluginClass)
+                    plugin.onEnable()
+                    // Not added to the loadedPlugins list for consistency with jar plugins
+                } else {
+                    logger.error("Failed to load Python plugin ${file.name}: Plugin class not found")
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to load Python plugin ${file.name}: ${e.message}")
+            }
+        }
+
         pluginDir.listFiles { file -> file.extension == "jar" }?.forEach { file ->
             val classLoader = URLClassLoader(arrayOf(file.toURI().toURL()), this::class.java.classLoader)
             val jar = JarFile(file)
@@ -159,6 +214,23 @@ object Bullet : AutoCloseable {
                 loadedPlugins.add(plugin)
             }
         }
+    }
+
+    private fun checkForPythonPlugins(): Boolean {
+        val pluginDir = File("plugins")
+
+        // Check if a directory exists
+        if (!pluginDir.exists()) {
+            return false
+        }
+
+        // Filter for .py files and check if any exist
+        val pythonFiles = pluginDir.listFiles { file ->
+            file.isFile && file.extension.equals("py", ignoreCase = true)
+        }
+
+        // Return true if at least one Python file exists
+        return pythonFiles?.isNotEmpty() ?: false
     }
 
     private fun parsePluginJson(json: String): PluginMetadata {

@@ -47,3 +47,5 @@ bin/
 ### runtime world folder ###
 /world/
 /data/
+/.idea/codeStyles/codeStyleConfig.xml
+/.idea/codeStyles/Project.xml
